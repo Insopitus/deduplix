@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import SelectDir from './components/SelectDir.vue'
+import Home from './components/Home.vue'
 
 const workingPath = ref('')
 
@@ -14,6 +15,7 @@ function handePathSelect(p:string){
 <template>
   <main class="container">
     <SelectDir v-if="!workingPath" @path-selected="handePathSelect"></SelectDir>
+    <Home v-if="workingPath" :working-path="workingPath"></Home>
   </main>
 </template>
 

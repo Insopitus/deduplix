@@ -11,7 +11,7 @@ async function chooseDirectory() {
     }).then(path => {
         console.log(path)
         if(path){
-            emit('path-selected', { path })
+            emit('path-selected', path)
         }
     }).catch(e => {
         console.log(e)
