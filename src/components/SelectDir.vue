@@ -2,7 +2,6 @@
 
 <script setup lang="ts">
 import { open } from '@tauri-apps/plugin-dialog';
-import { defineEmits } from 'vue'
 const emit = defineEmits()
 async function chooseDirectory() {
     open({

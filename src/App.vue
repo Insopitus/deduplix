@@ -8,6 +8,7 @@ const workingPath = ref('')
 
 function handePathSelect(p:string){
   workingPath.value = p
+  
 }
 
 </script>
@@ -48,8 +49,8 @@ html,body,#app{
   height: 100%;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  text-align: center;
+  justify-content: start;
+  padding: 10px 8px;
 }
 
 .logo {
@@ -80,6 +81,13 @@ a:hover {
 
 h1 {
   text-align: center;
+}
+
+ul{
+  padding: 0;
+}
+li{
+  list-style: none;
 }
 
 input,
