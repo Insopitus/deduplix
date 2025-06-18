@@ -1,47 +1,43 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 use rayon::prelude::*;
+use tauri::Emitter;
 use std::{
     collections::HashMap,
-    ffi::OsString,
     fs,
     hash::Hasher,
     io::{BufReader, Read},
     os::windows::fs::MetadataExt,
-    path::PathBuf,
+    path::{Path, PathBuf},
+    time::Instant,
 };
 use twox_hash::XxHash64;
 
 const SEED: u64 = 1233135;
 
-#[tauri::command]
-fn start_analysis(path: &str) -> Result<Report, String> {
-    let entries = fs::read_dir(path).unwrap();
-    let mut size_map: HashMap<u64, Vec<PathBuf>> = HashMap::new();
-    for entry in entries {
-        if let Ok(entry) = entry {
-            if let Ok(metadata) = entry.metadata() {
-                if metadata.is_file() && !metadata.is_symlink() {
-                    let size = metadata.file_size();
-                    size_map
-                        .entry(size)
-                        .and_modify(|value: &mut Vec<PathBuf>| {
-                            value.push(entry.path());
-                        })
-                        .or_insert(vec![entry.path()]);
-                }
-            }
-        }
-    }
+#[tauri::command(async)]
+fn start_analysis(path: &str,window:tauri::Window) -> Result<Report, String> {
+    let root_path = path;
+    // partial hash sample byte count
+    const SAMPLE_SIZE: usize = 1024;
+    // full hash byte size per batch
+    const BATCH_SIZE: usize = 64 * 1024;
 
+    let mut size_map = HashMap::new();
+    let instant = Instant::now();
+    read_entries(path, &mut size_map);
+    println!("here");
     let size_map: HashMap<_, _> = size_map
         .into_iter()
         .filter(|(size, list)| *size != 0 && list.len() > 1)
         .collect();
+    let elapsed = instant.elapsed().as_secs_f32();
+    println!("Ingestion took {} seconds", elapsed);
+    let instant = Instant::now();
+    let _ = window.emit("ingestion-done", ());
     let map: HashMap<u64, HashMap<u64, Vec<PathBuf>>> = size_map
         .into_par_iter()
         .map(|(size, list)| {
-            const SAMPLE_SIZE: usize = 1024;
             let sample_size = SAMPLE_SIZE.min(size as usize);
             let mut quick_hash_map = HashMap::new();
             let mut buf = vec![0; sample_size];
@@ -57,64 +53,80 @@ fn start_analysis(path: &str) -> Result<Report, String> {
                     })
                     .or_insert(vec![p]);
             });
-            let mut quick_hash_map: HashMap<u64, Vec<PathBuf>> = quick_hash_map
+            let quick_hash_map: HashMap<u64, Vec<PathBuf>> = quick_hash_map
                 .into_iter()
-                .filter(|(hash, list)| list.len() > 1)
+                .filter(|(_, list)| list.len() > 1)
                 .collect();
 
             (size, quick_hash_map)
         })
         .collect();
-    const BATCH_SIZE: usize = 64 * 1024;
+    let elapsed = instant.elapsed().as_secs_f32();
+    println!("Rough hashing took {} seconds", elapsed);
+    let _ = window.emit("quick-hash-done", ());
+    let instant = Instant::now();
     let map: HashMap<u64, HashMap<u64, Vec<PathBuf>>> = map
         .into_iter()
         .map(|(size, quick_map)| {
             let mut long_hash_map = HashMap::new();
+            // if the file size is small enough, no need to hash again.
+            if size <= SAMPLE_SIZE as u64{
+                for (hash,list) in quick_map {
+                    long_hash_map.insert(hash, list);
+                }
+            } else {
+                for (_, list) in quick_map {
+                    // Compute hashes in parallel and collect results
+                    let hash_path_pairs: Vec<(u64, PathBuf)> = list
+                        .into_par_iter()
+                        .map(|p| {
+                            let mut buf = vec![0; BATCH_SIZE];
+                            let file = fs::File::open(&p).unwrap();
+                            let mut reader = BufReader::new(file);
+                            let mut hasher = XxHash64::with_seed(SEED);
 
-            for (_, list) in quick_map {
-                // Compute hashes in parallel and collect results
-                let hash_path_pairs: Vec<(u64, PathBuf)> = list
-                    .into_par_iter()
-                    .map(|p| {
-                        let mut buf = vec![0; BATCH_SIZE];
-                        let file = fs::File::open(&p).unwrap();
-                        let mut reader = BufReader::new(file);
-                        let mut hasher = XxHash64::with_seed(SEED);
-
-                        while let Ok(n) = reader.read(&mut buf) {
-                            if n == 0 {
-                                break;
+                            while let Ok(n) = reader.read(&mut buf) {
+                                if n == 0 {
+                                    break;
+                                }
+                                hasher.write(&buf[..n]);
                             }
-                            hasher.write(&buf[..n]);
-                        }
-                        let hash = hasher.finish();
-                        (hash, p)
-                    })
-                    .collect();
-
-                // Merge results into long_hash_map sequentially
-                for (hash, p) in hash_path_pairs {
-                    long_hash_map
-                        .entry(hash)
-                        .and_modify(|vec: &mut Vec<_>| {
-                            vec.push(p.clone());
+                            let hash = hasher.finish();
+                            (hash, p)
                         })
-                        .or_insert(vec![p]);
+                        .collect();
+
+                    // Merge results into long_hash_map sequentially
+                    for (hash, p) in hash_path_pairs {
+                        long_hash_map
+                            .entry(hash)
+                            .and_modify(|vec: &mut Vec<_>| {
+                                vec.push(p.clone());
+                            })
+                            .or_insert(vec![p]);
+                    }
                 }
             }
-            let long_hash_map:HashMap<u64, Vec<PathBuf>> = long_hash_map.into_iter().filter(|(hash,list)|{
-                list.len()>1
-            }).collect();
+
+            let long_hash_map: HashMap<u64, Vec<PathBuf>> = long_hash_map
+                .into_iter()
+                .filter(|(_, list)| list.len() > 1)
+                .collect();
             (size, long_hash_map)
         })
         .collect();
+    let elapsed = instant.elapsed().as_secs_f32();
+    println!("Long hashing took {} seconds", elapsed);
+    let _ = window.emit("full-hash-done", ());
     let mut pairs = vec![];
     for (size, hash_map) in map {
         for (hash, list) in hash_map {
             pairs.push(Record {
                 hash: format!("{:016X}", hash),
-                size:to_human_readable_size(size),
-                files: list,
+                size: to_human_readable_size(size),
+                files: list.into_iter().map(|p|{
+                    p.strip_prefix(root_path).unwrap().into()
+                }).collect(),
             })
         }
     }
@@ -122,19 +134,58 @@ fn start_analysis(path: &str) -> Result<Report, String> {
     Ok(Report { pairs: pairs })
 }
 
-
 #[tauri::command]
-fn remove_file(path:&str)->Result<(),String>{
-    fs::remove_file(path).map_err(|e|e.to_string())
+fn remove_file(root_path: &str,rel_path:&str) -> Result<(), String> {
+    let path = PathBuf::from(root_path).join(rel_path);
+    fs::remove_file(path).map_err(|e| e.to_string())
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![start_analysis,remove_file])
+        .invoke_handler(tauri::generate_handler![start_analysis, remove_file,reveal_file_in_explorer])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// recursively read files
+fn read_entries(path: impl AsRef<Path>, map: &mut HashMap<u64, Vec<PathBuf>>) {
+    let entries = fs::read_dir(path.as_ref()).unwrap();
+    for entry in entries.flatten() {
+        if let Ok(metadata) = entry.metadata() {
+            if metadata.is_file() && !metadata.is_symlink() {
+                let size = metadata.file_size();
+                map.entry(size)
+                    .and_modify(|value: &mut Vec<PathBuf>| {
+                        value.push(entry.path());
+                    })
+                    .or_insert(vec![entry.path()]);
+            } else if metadata.is_dir() {
+                read_entries(entry.path(), map);
+            }
+        }
+    }
+}
+
+use std::process::Command;
+
+/// 在资源管理器中显示并选中文件
+#[tauri::command]
+fn reveal_file_in_explorer(root_path:&str,rel_path: &str) -> Result<(), String> {
+    let path = Path::new(&root_path).join(rel_path);
+    
+    if !path.exists() {
+        return Err("File doesn't exist.".into());
+    }
+    
+    // Windows 系统命令
+    Command::new("explorer")
+        .args(&["/select,", &path.to_string_lossy()])
+        .spawn()
+        .map_err(|e| format!("Failed to open explorer: {}", e))?;
+    
+    Ok(())
 }
 
 use serde::Serialize;

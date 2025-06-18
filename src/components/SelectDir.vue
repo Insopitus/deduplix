@@ -2,7 +2,7 @@
 
 <script setup lang="ts">
 import { open } from '@tauri-apps/plugin-dialog';
-const emit = defineEmits()
+const emit = defineEmits(['path-selected'])
 async function chooseDirectory() {
     open({
         multiple: false,
@@ -33,7 +33,7 @@ async function chooseDirectory() {
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100%;
+    flex-grow: 1;
 }
 
 button {

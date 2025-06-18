@@ -1,22 +1,24 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
 import SelectDir from './components/SelectDir.vue'
 import Home from './components/Home.vue'
 
 const workingPath = ref('')
 
-function handePathSelect(p:string){
+function handlePathSelect(p:string){
   workingPath.value = p
   
+}
+function handleGoback(){
+  workingPath.value = ''
 }
 
 </script>
 
 <template>
   <main class="container">
-    <SelectDir v-if="!workingPath" @path-selected="handePathSelect"></SelectDir>
-    <Home v-if="workingPath" :working-path="workingPath"></Home>
+    <SelectDir v-if="!workingPath" @path-selected="handlePathSelect"></SelectDir>
+    <Home v-if="workingPath" :working-path="workingPath" @back="handleGoback"></Home>
   </main>
 </template>
 
@@ -40,6 +42,9 @@ function handePathSelect(p:string){
 html,body,#app{
   height: 100%;
   margin: 0;
+}
+*{
+  box-sizing: border-box;
 }
 
 
@@ -92,7 +97,7 @@ li{
 
 input,
 button {
-  border-radius: 8px;
+  /* border-radius: 8px; */
   border: 1px solid transparent;
   padding: 0.6em 1.2em;
   font-size: 1em;
@@ -114,6 +119,10 @@ button:hover {
 button:active {
   border-color: #396cd8;
   background-color: #e8e8e8;
+}
+button:disabled{
+  border: none;
+  cursor:not-allowed;
 }
 
 input,

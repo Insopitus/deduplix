@@ -1,27 +1,33 @@
 <script setup lang="ts">
 import { invoke } from '@tauri-apps/api/core';
 
-defineProps(['item'])
+const props = defineProps(['item','rootPath'])
 function removeItem(path:string,parent:String[]){
-    invoke('remove_file',{path}).then(res=>{
+    invoke('remove_file',{rootPath:props.rootPath,relPath:path}).then(()=>{
         let index = parent.indexOf(path)
         if(index> -1){
             parent.splice(index,1)
         }
     })
 }
+function revealItem(path:string){
+	invoke('reveal_file_in_explorer',{rootPath:props.rootPath,relPath:path})
+}
 </script>
 
 <template>
 	<section>
 		<p>
-			<span class="hash">{{ item.hash }}</span> <span>- {{ item.size }}</span>
+			<span class="hash">{{ item.hash }}</span>&nbsp;&nbsp;<span class="size">{{ item.size }}</span>
 		</p>
 		<ul>
 			<li class="file-item" v-for="child in item.files">
 				<!-- <input type="checkbox"> -->
-				<span>{{ child }}</span>
-                <span @click="removeItem(child,item.files)" class="delete">&times;</span>
+				<span class="file-name">{{ child }}</span>
+				<div class="ctrl">
+					<div @click="revealItem(child)" title="Reveal in file explorer" class="reveal">REV</div>
+					<div @click="removeItem(child,item.files)" title="Remove file" class="delete">DEL</div>
+				</div>
 			</li>
 		</ul>
 	</section>
@@ -35,8 +41,17 @@ p {
     margin-bottom: 4px;
 }
 span.hash {
-	font-family: Consolas, monospace;
+	font-family: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', 'Roboto Mono', 
+               'Fira Mono', 'Droid Sans Mono', 'Source Code Pro', Menlo, 
+               Monaco, 'Ubuntu Mono', Consolas, monospace;
 	font-weight: bold;
+}
+span.size{
+	color: gray;
+	font-size: 14px;
+}
+span.file-name{
+	font-size: 14px;
 }
 ul {
 	margin: 0;
@@ -53,11 +68,36 @@ li.file-item{
     justify-content: space-between;
     align-items: center;
 }
-span.delete{
+
+/* li.file-item:hover{
+    background: rgba(0,0,0,0.2);
+} */
+ .ctrl{
+	display: flex;
+ }
+.ctrl div{
+	font-size: 12px;
+	padding: 2px 8px;
     cursor: pointer;
+
+}
+.ctrl div:hover{
+	font-size: 12px;
+	box-shadow: 0 0 2px rgba(0,0,0,0.2);
+	background-color: white;
+}
+.ctrl div.delete{
     color: red;
 }
-li.file-item:hover{
-    background: rgba(0,0,0,0.2);
+.ctrl div.delete:hover{
+    color: white;
+	background-color: red;
+}
+.ctrl div.reveal{
+	color: black;
+}
+.ctrl div.reveal:hover{
+	color: white;
+	background: black;
 }
 </style>
