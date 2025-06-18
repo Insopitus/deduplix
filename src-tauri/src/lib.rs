@@ -1,7 +1,6 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 use rayon::prelude::*;
-use tauri::Emitter;
 use std::{
     collections::HashMap,
     fs,
@@ -11,12 +10,13 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
+use tauri::Emitter;
 use twox_hash::XxHash64;
 
 const SEED: u64 = 1233135;
 
 #[tauri::command(async)]
-fn start_analysis(path: &str,window:tauri::Window) -> Result<Report, String> {
+fn start_analysis(path: &str, window: tauri::Window) -> Result<Report, String> {
     let root_path = path;
     // partial hash sample byte count
     const SAMPLE_SIZE: usize = 1024;
@@ -42,16 +42,18 @@ fn start_analysis(path: &str,window:tauri::Window) -> Result<Report, String> {
             let mut quick_hash_map = HashMap::new();
             let mut buf = vec![0; sample_size];
             list.into_iter().for_each(|p| {
-                let file = fs::File::open(&p).unwrap();
-                let mut reader = BufReader::new(file);
-                let n = reader.read(&mut buf).unwrap();
-                let hash = XxHash64::oneshot(SEED, &buf[..n]);
-                quick_hash_map
-                    .entry(hash)
-                    .and_modify(|v: &mut Vec<_>| {
-                        v.push(p.clone());
-                    })
-                    .or_insert(vec![p]);
+                if let Ok(file) = fs::File::open(&p) {
+                    let mut reader = BufReader::new(file);
+                    if let Ok(n) = reader.read(&mut buf) {
+                        let hash = XxHash64::oneshot(SEED, &buf[..n]);
+                        quick_hash_map
+                            .entry(hash)
+                            .and_modify(|v: &mut Vec<_>| {
+                                v.push(p.clone());
+                            })
+                            .or_insert(vec![p]);
+                    }
+                }
             });
             let quick_hash_map: HashMap<u64, Vec<PathBuf>> = quick_hash_map
                 .into_iter()
@@ -70,8 +72,8 @@ fn start_analysis(path: &str,window:tauri::Window) -> Result<Report, String> {
         .map(|(size, quick_map)| {
             let mut long_hash_map = HashMap::new();
             // if the file size is small enough, no need to hash again.
-            if size <= SAMPLE_SIZE as u64{
-                for (hash,list) in quick_map {
+            if size <= SAMPLE_SIZE as u64 {
+                for (hash, list) in quick_map {
                     long_hash_map.insert(hash, list);
                 }
             } else {
@@ -81,19 +83,23 @@ fn start_analysis(path: &str,window:tauri::Window) -> Result<Report, String> {
                         .into_par_iter()
                         .map(|p| {
                             let mut buf = vec![0; BATCH_SIZE];
-                            let file = fs::File::open(&p).unwrap();
-                            let mut reader = BufReader::new(file);
-                            let mut hasher = XxHash64::with_seed(SEED);
+                            if let Ok(file) = fs::File::open(&p) {
+                                let mut reader = BufReader::new(file);
+                                let mut hasher = XxHash64::with_seed(SEED);
 
-                            while let Ok(n) = reader.read(&mut buf) {
-                                if n == 0 {
-                                    break;
+                                while let Ok(n) = reader.read(&mut buf) {
+                                    if n == 0 {
+                                        break;
+                                    }
+                                    hasher.write(&buf[..n]);
                                 }
-                                hasher.write(&buf[..n]);
+                                let hash = hasher.finish();
+                                Some((hash, p))
+                            } else {
+                                None
                             }
-                            let hash = hasher.finish();
-                            (hash, p)
                         })
+                        .flatten()
                         .collect();
 
                     // Merge results into long_hash_map sequentially
@@ -124,9 +130,10 @@ fn start_analysis(path: &str,window:tauri::Window) -> Result<Report, String> {
             pairs.push(Record {
                 hash: format!("{:016X}", hash),
                 size: to_human_readable_size(size),
-                files: list.into_iter().map(|p|{
-                    p.strip_prefix(root_path).unwrap().into()
-                }).collect(),
+                files: list
+                    .into_iter()
+                    .map(|p| p.strip_prefix(root_path).unwrap_or(&p).into())
+                    .collect(),
             })
         }
     }
@@ -135,7 +142,7 @@ fn start_analysis(path: &str,window:tauri::Window) -> Result<Report, String> {
 }
 
 #[tauri::command]
-fn remove_file(root_path: &str,rel_path:&str) -> Result<(), String> {
+fn remove_file(root_path: &str, rel_path: &str) -> Result<(), String> {
     let path = PathBuf::from(root_path).join(rel_path);
     fs::remove_file(path).map_err(|e| e.to_string())
 }
@@ -144,25 +151,30 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![start_analysis, remove_file,reveal_file_in_explorer])
+        .invoke_handler(tauri::generate_handler![
+            start_analysis,
+            remove_file,
+            reveal_file_in_explorer
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 /// recursively read files
 fn read_entries(path: impl AsRef<Path>, map: &mut HashMap<u64, Vec<PathBuf>>) {
-    let entries = fs::read_dir(path.as_ref()).unwrap();
-    for entry in entries.flatten() {
-        if let Ok(metadata) = entry.metadata() {
-            if metadata.is_file() && !metadata.is_symlink() {
-                let size = metadata.file_size();
-                map.entry(size)
-                    .and_modify(|value: &mut Vec<PathBuf>| {
-                        value.push(entry.path());
-                    })
-                    .or_insert(vec![entry.path()]);
-            } else if metadata.is_dir() {
-                read_entries(entry.path(), map);
+    if let Ok(entries) = fs::read_dir(path.as_ref()) {
+        for entry in entries.flatten() {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_file() && !metadata.is_symlink() {
+                    let size = metadata.file_size();
+                    map.entry(size)
+                        .and_modify(|value: &mut Vec<PathBuf>| {
+                            value.push(entry.path());
+                        })
+                        .or_insert(vec![entry.path()]);
+                } else if metadata.is_dir() {
+                    read_entries(entry.path(), map);
+                }
             }
         }
     }
@@ -172,19 +184,19 @@ use std::process::Command;
 
 /// 在资源管理器中显示并选中文件
 #[tauri::command]
-fn reveal_file_in_explorer(root_path:&str,rel_path: &str) -> Result<(), String> {
+fn reveal_file_in_explorer(root_path: &str, rel_path: &str) -> Result<(), String> {
     let path = Path::new(&root_path).join(rel_path);
-    
+
     if !path.exists() {
         return Err("File doesn't exist.".into());
     }
-    
+
     // Windows 系统命令
     Command::new("explorer")
         .args(&["/select,", &path.to_string_lossy()])
         .spawn()
         .map_err(|e| format!("Failed to open explorer: {}", e))?;
-    
+
     Ok(())
 }
 
