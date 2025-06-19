@@ -16,7 +16,7 @@ use twox_hash::XxHash64;
 const SEED: u64 = 1233135;
 
 #[tauri::command(async)]
-fn start_analysis(path: &str, window: tauri::Window) -> Result<Report, String> {
+fn start_analysis(path: &str, config: Config, window: tauri::Window) -> Result<Report, String> {
     let root_path = path;
     // partial hash sample byte count
     const SAMPLE_SIZE: usize = 1024;
@@ -127,16 +127,25 @@ fn start_analysis(path: &str, window: tauri::Window) -> Result<Report, String> {
     let mut pairs = vec![];
     for (size, hash_map) in map {
         for (hash, list) in hash_map {
-            pairs.push(Record {
-                hash: format!("{:016X}", hash),
-                size: to_human_readable_size(size),
-                files: list
-                    .into_iter()
+            pairs.push((
+                hash,
+                size,
+                list.into_iter()
                     .map(|p| p.strip_prefix(root_path).unwrap_or(&p).into())
                     .collect(),
-            })
+            ))
         }
     }
+    // sort by size (decending)
+    pairs.sort_by(|a, b| b.1.cmp(&a.1));
+    let pairs = pairs
+        .into_iter()
+        .map(|(hash, size, list)| Record {
+            hash: format!("{:016X}", hash),
+            size: to_human_readable_size(size),
+            files: list,
+        })
+        .collect();
 
     Ok(Report { pairs: pairs })
 }
@@ -182,7 +191,6 @@ fn read_entries(path: impl AsRef<Path>, map: &mut HashMap<u64, Vec<PathBuf>>) {
 
 use std::process::Command;
 
-/// 在资源管理器中显示并选中文件
 #[tauri::command]
 fn reveal_file_in_explorer(root_path: &str, rel_path: &str) -> Result<(), String> {
     let path = Path::new(&root_path).join(rel_path);
@@ -200,7 +208,7 @@ fn reveal_file_in_explorer(root_path: &str, rel_path: &str) -> Result<(), String
     Ok(())
 }
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
 struct Report {
@@ -211,6 +219,12 @@ struct Record {
     hash: String,
     size: String,
     files: Vec<PathBuf>,
+}
+
+#[derive(Deserialize)]
+struct Config {
+    path_filters: String,
+    size_extend: (u64, u64),
 }
 
 fn to_human_readable_size(size: u64) -> String {
