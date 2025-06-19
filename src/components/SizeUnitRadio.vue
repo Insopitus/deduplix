@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { SizeUnit } from "../types";
-const props = defineProps<{
+defineProps<{
     options: Array<SizeUnit>;
     modelValue: SizeUnit;
 }>();
@@ -23,14 +23,18 @@ function updateValue(option: SizeUnit) {
 </template>
 
 <style scoped>
+.size-unit-radio{
+    flex-grow: 1;
+}
 button {
     width: 28px;
     height: 20px;
     padding: 2px 3px;
     font-size: 14px;
+    box-shadow: 0 0 1px black;
 }
 .selected {
     background: aquamarine;
-    color: white;
+    /* color: white; */
 }
 </style>

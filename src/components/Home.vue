@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { Ref, ref } from 'vue'
 import DupGroup from './DupGroup.vue'
 import AnalysisProgress from './AnalysisProgress.vue'
-const props = defineProps(['workingPath'])
+const props = defineProps(['workingPath', 'config'])
 const emit = defineEmits(['back'])
 const analysisDone = ref(false)
 type Pair = {
@@ -11,12 +11,12 @@ type Pair = {
 	files: string[]
 }
 const pairs: Ref<Pair[]> = ref([])
-invoke<{ pairs: Pair[] }>('start_analysis', { path: props.workingPath }).then((result) => {
+invoke<{ pairs: Pair[] }>('start_analysis', { path: props.workingPath, config: props.config }).then((result) => {
 	analysisDone.value = true
 	pairs.value = result.pairs
 })
 
-function goback(){
+function goback() {
 	emit('back')
 }
 </script>
@@ -38,18 +38,21 @@ function goback(){
 </template>
 
 <style lang="css" scoped>
-header.top-bar{
+header.top-bar {
 	display: flex;
 	justify-content: space-between;
 }
-header.top-bar input{
+
+header.top-bar input {
 	flex-grow: 1;
 }
+
 main {
 	flex-grow: 1;
 	padding-top: 16px;
 }
-.no-result{
+
+.no-result {
 	display: flex;
 	height: 100%;
 	font-size: 24px;

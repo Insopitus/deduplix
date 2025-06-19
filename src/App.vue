@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { Ref, ref } from "vue";
 import SelectDir from './components/SelectDir.vue'
 import Home from './components/Home.vue'
+import { type PathConfig } from "./types";
 
 const workingPath = ref('')
-
-function handlePathSelect(p:string){
-  workingPath.value = p
-  
+const config:Ref<PathConfig['config']> = ref({
+  size_extend:[0,2**64-1],
+  include:'',
+  exclude:''
+})
+function handlePathSelect(p:PathConfig){
+  workingPath.value = p.path
+  config.value = p.config
 }
 function handleGoback(){
   workingPath.value = ''
@@ -18,7 +23,7 @@ function handleGoback(){
 <template>
   <main class="container">
     <SelectDir v-if="!workingPath" @path-selected="handlePathSelect"></SelectDir>
-    <Home v-if="workingPath" :working-path="workingPath" @back="handleGoback"></Home>
+    <Home v-if="workingPath" :working-path="workingPath" :config="config" @back="handleGoback"></Home>
   </main>
 </template>
 

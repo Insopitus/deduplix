@@ -22,14 +22,14 @@ fn start_analysis(path: &str, config: Config, window: tauri::Window) -> Result<R
     const SAMPLE_SIZE: usize = 1024;
     // full hash byte size per batch
     const BATCH_SIZE: usize = 64 * 1024;
-
+    let size_range = config.size_extend.0..config.size_extend.1;
     let mut size_map = HashMap::new();
     let instant = Instant::now();
     read_entries(path, &mut size_map);
-    println!("here");
+    dbg!(&size_range);
     let size_map: HashMap<_, _> = size_map
         .into_iter()
-        .filter(|(size, list)| *size != 0 && list.len() > 1)
+        .filter(|(size, list)| *size != 0 && size_range.contains(size) && list.len() > 1)
         .collect();
     let elapsed = instant.elapsed().as_secs_f32();
     println!("Ingestion took {} seconds", elapsed);
@@ -223,8 +223,9 @@ struct Record {
 
 #[derive(Deserialize)]
 struct Config {
-    path_filters: String,
-    size_extend: (u64, u64),
+    pub include: String,
+    pub exclude: String,
+    pub size_extend: (u64, u64),
 }
 
 fn to_human_readable_size(size: u64) -> String {

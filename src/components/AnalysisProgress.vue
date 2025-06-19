@@ -5,13 +5,13 @@ import { ref } from 'vue'
 let stages = ['ingestion', 'quick-filter', 'hash']
 let stageIndex = ref(0)
 
-const unlisten0 = listen('ingestion-done', () => {
+listen('ingestion-done', () => {
 	stageIndex.value = 1
 })
-const unlisten1 = listen('quick-hash-done', () => {
+listen('quick-hash-done', () => {
 	stageIndex.value = 2
 })
-const unlisten2 = listen('full-hash-done', () => {
+listen('full-hash-done', () => {
 	stageIndex.value = 3
 })
 </script>
