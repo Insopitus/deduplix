@@ -7,7 +7,7 @@ const emit = defineEmits(["path-selected"]);
 import { SizeUnit } from "../types";
 const KILO_BYTE = 1024;
 const MEGA_BYTE = KILO_BYTE * 1024;
-const GIGA_BYTE = MEGA_BYTE * 1024
+const GIGA_BYTE = MEGA_BYTE * 1024;
 const include = ref("");
 const exclude = ref("");
 const minSize = ref(1);
@@ -26,7 +26,7 @@ async function chooseDirectory() {
         .then((path) => {
             console.log(path);
             if (path) {
-                console.log(typeof path)
+                console.log(typeof path);
                 emit("path-selected", {
                     path,
                     config: {
@@ -34,10 +34,9 @@ async function chooseDirectory() {
                         exclude: exclude.value,
                         size_extend: [
                             convertSize(minSize.value, minSizeUnit.value),
-                            convertSize(maxSize.value, maxSizeUnit.value)
+                            convertSize(maxSize.value, maxSizeUnit.value),
                         ],
-                    }
-
+                    },
                 });
             }
         })
@@ -56,16 +55,16 @@ function validateSize() {
 function convertSize(num: number, unit: SizeUnit) {
     let result = num;
     switch (unit) {
-        case 'B':
+        case "B":
             return result;
-        case 'KB':
+        case "KB":
             return result * KILO_BYTE;
-        case 'MB':
+        case "MB":
             return result * MEGA_BYTE;
-        case 'GB':
+        case "GB":
             return result * GIGA_BYTE;
         default:
-            return 0
+            return 0;
     }
 }
 </script>
@@ -75,29 +74,54 @@ function convertSize(num: number, unit: SizeUnit) {
         <div class="mask"></div>
         <div class="main">
             <button @click="chooseDirectory">Choose a directory...</button>
-            <LabeledInput v-model="include" label="include:" style="width: 100%;"
-                placeholder="e.g. *.txt, photo.*. Separate by commas" />
-            <LabeledInput v-model="exclude" label="exclude:"
-                placeholder="e.g. *.txt, downloads/**/*.mp4. Separate by commas" />
+            <LabeledInput
+                v-model="include"
+                label="include:"
+                style="width: 100%"
+                placeholder="e.g. **/*.txt, **/*.mp4 Separate by commas"
+            />
+            <LabeledInput
+                v-model="exclude"
+                label="exclude:"
+                placeholder="e.g. **/*.txt, **/*.mp4 Separate by commas"
+            />
 
             <div class="size-line">
                 <div class="min-line">
-                    <LabeledInput v-model="minSize" label="min size:" type="number" @change="validateSize"
-                        placeholder="e.g. 1024" />
-                    <SizeUnitRadio v-model="minSizeUnit" name="min-size" label="size unit:"
-                        style="position: absolute;right: 4px;top: 10px;" :options="['B', 'KB', 'MB', 'GB']" />
+                    <LabeledInput
+                        v-model="minSize"
+                        label="min size:"
+                        type="number"
+                        @change="validateSize"
+                        placeholder="e.g. 1024"
+                    />
+                    <SizeUnitRadio
+                        v-model="minSizeUnit"
+                        name="min-size"
+                        label="size unit:"
+                        style="position: absolute; right: 4px; top: 10px"
+                        :options="['B', 'KB', 'MB', 'GB']"
+                    />
                 </div>
                 <div class="max-line">
-                    <LabeledInput v-model="maxSize" label="max size:" type="number" @change="validateSize"
-                        placeholder="e.g. 1024" />
+                    <LabeledInput
+                        v-model="maxSize"
+                        label="max size:"
+                        type="number"
+                        @change="validateSize"
+                        placeholder="e.g. 1024"
+                    />
 
-                    <SizeUnitRadio v-model="maxSizeUnit" name="max-size" label="size unit:"
-                        style="position: absolute;right: 4px;top: 10px;" :options="['B', 'KB', 'MB', 'GB']" />
+                    <SizeUnitRadio
+                        v-model="maxSizeUnit"
+                        name="max-size"
+                        label="size unit:"
+                        style="position: absolute; right: 4px; top: 10px"
+                        :options="['B', 'KB', 'MB', 'GB']"
+                    />
                 </div>
             </div>
         </div>
-
-
     </div>
 </template>
 
@@ -122,11 +146,6 @@ button {
     z-index: 1;
     height: 80px;
 }
-
-
-
-
-input[type="number"] {}
 
 .max-line,
 .min-line {

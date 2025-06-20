@@ -12,12 +12,29 @@ use std::{
 };
 use tauri::Emitter;
 use twox_hash::XxHash64;
+use wax::Pattern;
 
 const SEED: u64 = 1233135;
 
 #[tauri::command(async)]
 fn start_analysis(path: &str, config: Config, window: tauri::Window) -> Result<Report, String> {
     let root_path = path;
+    let include = if config.include.is_empty() {
+        None
+    } else {
+        Some(
+            wax::any(config.include.split(","))
+                .map_err(|_| "Invalid include pattern".to_string())?,
+        )
+    };
+    let exclude = if config.exclude.is_empty() {
+        None
+    } else {
+        Some(
+            wax::any(config.exclude.split(","))
+                .map_err(|_| "Invalid exclude pattern".to_string())?,
+        )
+    };
     // partial hash sample byte count
     const SAMPLE_SIZE: usize = 1024;
     // full hash byte size per batch
@@ -25,8 +42,7 @@ fn start_analysis(path: &str, config: Config, window: tauri::Window) -> Result<R
     let size_range = config.size_extend.0..config.size_extend.1;
     let mut size_map = HashMap::new();
     let instant = Instant::now();
-    read_entries(path, &mut size_map);
-    dbg!(&size_range);
+    read_entries(path, &mut size_map, &include, &exclude);
     let size_map: HashMap<_, _> = size_map
         .into_iter()
         .filter(|(size, list)| *size != 0 && size_range.contains(size) && list.len() > 1)
@@ -170,9 +186,24 @@ pub fn run() {
 }
 
 /// recursively read files
-fn read_entries(path: impl AsRef<Path>, map: &mut HashMap<u64, Vec<PathBuf>>) {
+fn read_entries(
+    path: impl AsRef<Path>,
+    map: &mut HashMap<u64, Vec<PathBuf>>,
+    include: &Option<wax::Any>,
+    exclude: &Option<wax::Any>,
+) {
     if let Ok(entries) = fs::read_dir(path.as_ref()) {
         for entry in entries.flatten() {
+            if let Some(include) = include {
+                if !include.is_match(entry.path().as_path()) {
+                    continue;
+                }
+            }
+            if let Some(exclude) = exclude {
+                if exclude.is_match(entry.path().as_path()) {
+                    continue;
+                }
+            }
             if let Ok(metadata) = entry.metadata() {
                 if metadata.is_file() && !metadata.is_symlink() {
                     let size = metadata.file_size();
@@ -182,7 +213,7 @@ fn read_entries(path: impl AsRef<Path>, map: &mut HashMap<u64, Vec<PathBuf>>) {
                         })
                         .or_insert(vec![entry.path()]);
                 } else if metadata.is_dir() {
-                    read_entries(entry.path(), map);
+                    read_entries(entry.path(), map, include, exclude);
                 }
             }
         }
